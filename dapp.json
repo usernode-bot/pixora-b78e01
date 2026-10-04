@@ -1,4 +1,30 @@
 {
   "description": "AI toolkit for creating and preparing commercial visual assets for stock libraries",
-  "secrets": []
+  "secrets": [],
+  "tests": [
+    {
+      "id": "home.default",
+      "name": "Home renders with sidebar",
+      "path": "/",
+      "expectSelector": "#nav",
+      "expectText": "PIXORA",
+      "visual": true,
+      "impact": ["public/**", "server.js"]
+    },
+    {
+      "name": "Creative workspace renders",
+      "path": "/creative",
+      "expectSelector": "#creative-generate"
+    },
+    {
+      "name": "Upscale workspace renders",
+      "path": "/upscale",
+      "expectSelector": "#upscale-btn"
+    },
+    {
+      "name": "Remove Background workspace renders",
+      "path": "/remove-background",
+      "expectSelector": "#removebg-btn"
+    }
+  ]
 }

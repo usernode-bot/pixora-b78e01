@@ -1,11 +1,13 @@
 const express = require('express');
 const path = require('path');
-const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// Set once a SIGTERM/SIGINT arrives; /health answers 503 so anything
+// polling readiness sees this container leaving rotation.
+let shuttingDown = false;
 
 // The platform signs user-identity tokens with an RSA private key it never
 // shares. Containers get only the PUBLIC half, so this app can verify who a
@@ -100,7 +102,10 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/health', (_req, res) => {
+  if (shuttingDown) return res.status(503).json({ status: 'draining' });
+  res.json({ status: 'ok' });
+});
 
 // The template ships no favicon file; index.html carries an inline SVG
 // icon instead. Answer 204 here so anything that still probes
@@ -108,34 +113,6 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 // the auth-gated catch-all and surface a 401 in the console on every
 // fresh load.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
-
-// Button press
-app.post('/api/press', async (req, res) => {
-  try {
-    await pool.query(`
-      INSERT INTO presses (user_id, username) VALUES ($1, $2)
-    `, [req.user.id, req.user.username]);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Leaderboard
-app.get('/api/leaderboard', async (_req, res) => {
-  try {
-    const { rows } = await pool.query(`
-      SELECT username, COUNT(*) as presses
-      FROM presses
-      GROUP BY username
-      ORDER BY presses DESC
-      LIMIT 50
-    `);
-    res.json({ leaderboard: rows });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -174,18 +151,25 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-async function start() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS presses (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL,
-      username VARCHAR(255) NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  const server = app.listen(port, () => console.log(`Listening on :${port}`));
-  // Let Envoy retire idle upstream connections at 60s, with a 15s margin.
-  server.keepAliveTimeout = 75_000;
+// The app container is stopped and replaced on every deploy. Stop accepting
+// connections, drop idle keep-alives, and exit well inside the platform's
+// stop grace instead of being force-killed mid-request.
+const DRAIN_MS = 3000;
+
+async function shutdown(signal) {
+  if (shuttingDown) return; // idempotent: a repeat signal must be a no-op
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} received, draining`);
+  server.close(() => {});
+  server.closeIdleConnections?.();
+  const t = setTimeout(() => server.closeAllConnections?.(), DRAIN_MS);
+  t.unref?.();
+  process.exit(0);
 }
 
-start().catch(err => { console.error(err); process.exit(1); });
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+const server = app.listen(port, () => console.log(`Listening on :${port}`));
+// Let Envoy retire idle upstream connections at 60s, with a 15s margin.
+server.keepAliveTimeout = 75_000;

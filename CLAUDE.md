@@ -102,22 +102,26 @@ tables you've marked private), etc.
 
 AI toolkit for creating and preparing commercial visual assets for stock libraries
 
-_(add a sentence or two more of product context here so Claude Code has a
-shared understanding of what this app is for)_
+PIXORA v1 ships three tools — Creative (prompt to image), Upscale Image
+(2x/4x) and Remove Background — each with its own page and workspace.
+Processing is mock/placeholder: results are simulated client-side, no AI
+API is connected yet. The architecture is built around a tool registry:
+a new tool is one module in `public/js/tools/` plus one entry in
+`public/js/tools.js`, and the sidebar, router and home page cards pick it
+up automatically. Do not add Metadata AI, Prompt Generator, payments,
+credits or a store until asked.
 
 ## Design
 
-This app's look. The first real version fills in the blanks; every later
-change follows it, and updates it when a request changes the look on purpose.
-
-- **Palette:** _(name the accent, any second colour and the neutrals, e.g.
-  "accent: tomato red; second: basil green; neutrals: warm greys")_
-- **Signature element:** _(the one thing on screen drawn from this app's
-  subject, which no other app would have)_
+- **Palette:** indigo accent (indigo-600 light, indigo-400 dark) over warm
+  stone neutrals. The sidebar has its own fixed dark palette (`--sb-*`
+  tokens) that stays dark in both looks; the main area follows the viewer's
+  Homeroom theme.
+- **Signature element:** the dark sidebar with the PIXORA text wordmark, and
+  the transparency checkerboard (`.checker-bg`) behind Remove Background
+  results.
 - **Type scale:** `text-title`, `text-heading`, `text-body`, `text-small`
-  _(change their sizes in `tailwind.config.js` if you must, not their number)_
-- **One fixed look:** _(only for an app drawn as its own scene, such as a
-  game: which look, and why. Otherwise delete this line.)_
+  (unchanged from the kit).
 
 The kit is in `styles/tailwind-input.css`: colour tokens with a light and
 a dark value (named in `tailwind.config.js`), and a few components
@@ -139,6 +143,13 @@ Re-theme by changing the token values there, keeping every text pair at
 
 ## App-specific conventions
 
-_(optional — e.g. "all currency values stored as integer cents, not
-floats"; "the `posts` table is append-only"; "avoid adding new
-dependencies"; etc.)_
+- Tools are registered in `public/js/tools.js` and implemented in
+  `public/js/tools/`; a tool module exports `{ id, name, path, tagline,
+  icon, render }` and renders into the `#view` element.
+- All tool processing is mock for now (`mockDelay` in `public/js/ui.js`).
+  When real AI lands, swap the mock call inside each tool's handler, keeping
+  the surrounding states (empty/loading/result) unchanged.
+- No database tables yet; the server only serves the shell and static
+  assets. Uploaded images never leave the browser.
+- The `pg` dependency is declared but unused since the starter demo
+  endpoints were removed; drop it whenever dependencies are next touched.
