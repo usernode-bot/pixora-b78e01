@@ -100,24 +100,27 @@ tables you've marked private), etc.
 
 ## About pixora
 
-AI toolkit for creating and preparing commercial visual assets for stock libraries
-
-_(add a sentence or two more of product context here so Claude Code has a
-shared understanding of what this app is for)_
+AI toolkit for creating and preparing commercial visual assets for stock
+libraries. Microstock contributors work in five tools: **Creative** (make
+AI-generated visual assets and stock content), **Upscale Image**
+(resolution and quality for stock submission), **Remove Background**
+(clean isolated assets with transparent backgrounds), **Metadata AI**
+(stock-friendly titles, descriptions, keywords and categories) and
+**Prompt Generator** (optimized prompts for original commercial stock
+content). The tools ship progressively — the app shell comes first, each
+tool page shows a "coming next" state until it is built.
 
 ## Design
 
 This app's look. The first real version fills in the blanks; every later
 change follows it, and updates it when a request changes the look on purpose.
 
-- **Palette:** _(name the accent, any second colour and the neutrals, e.g.
-  "accent: tomato red; second: basil green; neutrals: warm greys")_
-- **Signature element:** _(the one thing on screen drawn from this app's
-  subject, which no other app would have)_
+- **Palette:** accent: teal (the kit's `--accent`, teal-700 in light /
+  teal-400 in dark); neutrals: warm stone greys; no second colour.
+- **Signature element:** the pixora wordmark with a teal dot, repeated as
+  the favicon (a teal circle with a white centre).
 - **Type scale:** `text-title`, `text-heading`, `text-body`, `text-small`
   _(change their sizes in `tailwind.config.js` if you must, not their number)_
-- **One fixed look:** _(only for an app drawn as its own scene, such as a
-  game: which look, and why. Otherwise delete this line.)_
 
 The kit is in `styles/tailwind-input.css`: colour tokens with a light and
 a dark value (named in `tailwind.config.js`), and a few components

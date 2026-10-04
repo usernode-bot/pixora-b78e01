@@ -1,4 +1,21 @@
 {
   "description": "AI toolkit for creating and preparing commercial visual assets for stock libraries",
-  "secrets": []
+  "secrets": [],
+  "tests": [
+    {
+      "id": "shell.default",
+      "name": "App shell renders the pixora sidebar",
+      "path": "/",
+      "expectSelector": "nav[aria-label='Tools']",
+      "expectText": "pixora",
+      "visual": true,
+      "impact": ["public/index.html"]
+    },
+    {
+      "name": "Creative opens by default with coming-next state",
+      "path": "/",
+      "expectSelector": "section[data-tool-panel='creative']:not([hidden])",
+      "expectText": "This tool is coming next"
+    }
+  ]
 }
