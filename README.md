@@ -1,29 +1,41 @@
-# pixora
+# PIXORA
 
-> **Starter template** — this repo was scaffolded by Homeroom Social
-> Vibecoding. Everything in it is placeholder example code until the
-> app's first real feature is built.
+An AI creative toolkit for microstock contributors. Version 1 ships three
+tools, each with its own page and workspace:
 
-The scaffold is a small working demo that proves the plumbing works:
+- **Creative** — describe an image with a text prompt and generate previews.
+- **Upscale Image** — upload a photo and enlarge it 2x or 4x.
+- **Remove Background** — upload a photo and strip the background.
 
-- **Sign-in** — the server verifies the platform-issued user token
-  (an RS256 JWT) on every request, so the app already knows who is
-  using it. No accounts to build.
-- **Database** — the app has its own private Postgres database; the
-  demo stores button presses in a `presses` table.
-- **Live API** — two example routes (`/api/press`,
-  `/api/leaderboard`) read and write through a real Express server.
-- **Styling** — Tailwind CSS, precompiled by `npm run build` during
-  image creation with either Kubernetes/Paketo or standalone Docker, in a
-  light and a dark look that follow the viewer's Homeroom theme.
+Processing is mock/placeholder for now: results are simulated client-side
+after a short delay, and no AI API is connected yet.
 
-## Replacing the template
+## Architecture
 
-To change this app, ask Homeroom bot: open the app on Homeroom, tap the
-Homeroom icon in the header, then **Ask for a change**, and describe the
-app you want in plain English. The template will be replaced with your
-real app. You can also run
-Claude Code against this repo directly; start with `CLAUDE.md`, which
-carries the app-specific notes and points at the platform rules.
+- `server.js` — Express server: platform auth (iframe JWT), static files,
+  the HTML catch-all that makes every tool route directly reachable, and a
+  graceful shutdown handler.
+- `public/index.html` — the shell: dark sidebar, light main area, mobile
+  header.
+- `public/js/tools.js` — the tool registry. The sidebar, the router and the
+  home page cards all read it.
+- `public/js/tools/*.js` — one module per tool exporting
+  `{ id, name, path, tagline, icon, render }`.
 
-Once the real app exists, rewrite this README to describe it.
+**Adding a tool:** create a module in `public/js/tools/` with that shape and
+add one import plus one array entry in `public/js/tools.js`. Nothing else
+changes — the sidebar, routing and home page pick it up automatically.
+
+- `public/js/ui.js` — shared workspace helpers (drop zone, segmented
+  control, icons, page layout).
+- `styles/tailwind-input.css` + `tailwind.config.js` — the design tokens
+  (colour tokens with light/dark values, plus the sidebar's fixed dark
+  palette).
+
+## Development
+
+```sh
+npm ci --include=dev
+npm run build   # compiles public/tailwind.css
+npm start
+```
