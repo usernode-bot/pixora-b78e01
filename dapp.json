@@ -26,5 +26,9 @@
       "path": "/remove-background",
       "expectSelector": "#removebg-btn"
     }
-  ]
+  ],
+  "icon": {
+    "image": "brand/icon.png",
+    "emoji": "🎨"
+  }
 }
