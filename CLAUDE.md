@@ -145,7 +145,9 @@ Re-theme by changing the token values there, keeping every text pair at
 
 - Tools are registered in `public/js/tools.js` and implemented in
   `public/js/tools/`; a tool module exports `{ id, name, path, tagline,
-  icon, render }` and renders into the `#view` element.
+  icon, render }` and renders into the `#route` element inside `#view`.
+  `#view` also holds `#onboarding`, the first-run guide, so the router clears
+  `#route` rather than `#view`.
 - All tool processing is mock for now (`mockDelay` in `public/js/ui.js`).
   When real AI lands, swap the mock call inside each tool's handler, keeping
   the surrounding states (empty/loading/result) unchanged.
@@ -153,3 +155,32 @@ Re-theme by changing the token values there, keeping every text pair at
   assets. Uploaded images never leave the browser.
 - The `pg` dependency is declared but unused since the starter demo
   endpoints were removed; drop it whenever dependencies are next touched.
+- The first-run guide lives in `public/index.html` (`#onboarding`) and
+  `public/js/onboarding.js`. It shows on the home route until the
+  `pixora:onboarded` localStorage flag is set, which happens when a
+  conversion finishes (`conversionDone()`) or the visitor presses "Got it".
+  The "?" buttons (`[data-guide-open]`) reopen it for the session without
+  changing the stored flag. "Try a sample" draws a 1600x1000 image on a
+  canvas and parks it; the tool that renders next collects it with
+  `takePendingFile()`, which is the same object shape `uploadZone` produces.
+  Never seed the flag: the app's own logic reads it.
+
+## Run it locally
+
+```sh
+npm ci --include=dev   # devDependencies, so the Tailwind CLI is available
+npm run build:css      # writes public/tailwind.css (generated, never committed)
+npm start              # serves on http://localhost:3000
+npm test               # node --test over test/
+npm run dev            # Tailwind in watch mode plus node --watch server.js, together
+```
+
+The server reads `PORT` (default 3000), `USERNODE_JWT_PUBLIC_KEY`,
+`USERNODE_APP_ID` and `USERNODE_PLATFORM_ORIGIN`; all are optional locally.
+`DATABASE_URL` and `USERNODE_ENV` are injected by the platform and unused
+here. `public/tailwind.css` is not in the repo: the two-stage `Dockerfile`
+compiles it from the markup in each commit, so a checkout without one loads
+unstyled until `npm run build:css` runs. `http://localhost:3000/` renders
+the shell, but a direct hit on a tool URL goes through the auth-gated HTML
+catch-all and shows the "Open in Homeroom" notice; use the sidebar to
+navigate, or set `USERNODE_PLATFORM_ORIGIN`.
