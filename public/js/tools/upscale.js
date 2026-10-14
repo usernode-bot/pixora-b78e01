@@ -1,6 +1,7 @@
 // Upscale Image: upload area, preview, 2x/4x option, Upscale button,
 // result area. Mock processing.
 import { el, pageHeader, workspace, uploadZone, imagePreview, segmented, badge, mockDelay } from '../ui.js';
+import { conversionDone, takePendingFile } from '../onboarding.js';
 
 export default {
   id: 'upscale',
@@ -78,6 +79,7 @@ export default {
         + (file.width * scale.value) + ' × ' + (file.height * scale.value) + ' px (mock)';
       show('done');
       upscaleBtn.disabled = false;
+      conversionDone();
     }
     upscaleBtn.addEventListener('click', runUpscale);
 
@@ -95,10 +97,16 @@ export default {
       loading,
       done,
     ]);
-
+    
     view.append(
       pageHeader('Upscale Image', 'Upload a photo and enlarge it 2x or 4x.'),
       workspace(controls, results),
     );
+
+    // A "Try a sample" (or a guide drop) parks an image for the first tool
+    // that renders. If this is that tool, load it now that every control
+    // setFile() reaches exists, exactly as a picked file would be.
+    const pending = takePendingFile();
+    if (pending) setFile(pending);
   },
 };

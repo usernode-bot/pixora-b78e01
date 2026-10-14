@@ -12,6 +12,12 @@
       "impact": ["public/**", "server.js"]
     },
     {
+      "name": "First-run guide renders",
+      "path": "/",
+      "expectSelector": "#onboarding-dropzone",
+      "expectText": "Convert images in your browser"
+    },
+    {
       "name": "Creative workspace renders",
       "path": "/creative",
       "expectSelector": "#creative-generate"

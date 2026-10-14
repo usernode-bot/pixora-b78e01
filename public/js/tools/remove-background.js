@@ -1,6 +1,7 @@
 // Remove Background: upload area, preview, Remove Background button,
 // result area. Mock processing.
 import { el, pageHeader, workspace, uploadZone, imagePreview, badge, mockDelay } from '../ui.js';
+import { conversionDone, takePendingFile } from '../onboarding.js';
 
 export default {
   id: 'remove-background',
@@ -71,6 +72,7 @@ export default {
       resultImage.alt = 'Mock background-removed preview of ' + file.name;
       show('done');
       removeBgBtn.disabled = false;
+      conversionDone();
     }
     removeBgBtn.addEventListener('click', runRemove);
 
@@ -87,10 +89,16 @@ export default {
       loading,
       done,
     ]);
-
+    
     view.append(
       pageHeader('Remove Background', 'Upload a photo and strip the background.'),
       workspace(controls, results),
     );
+
+    // A "Try a sample" (or a guide drop) parks an image for the first tool
+    // that renders. If this is that tool, load it now that every control
+    // setFile() reaches exists, exactly as a picked file would be.
+    const pending = takePendingFile();
+    if (pending) setFile(pending);
   },
 };

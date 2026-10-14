@@ -4,14 +4,21 @@
 // page is directly reachable by URL.
 import { el, icon } from './ui.js';
 import { tools } from './tools.js';
+import { initOnboarding, reopenGuide, shouldShowGuide } from './onboarding.js';
 
 const view = document.getElementById('view');
+const route = document.getElementById('route');
+const guide = document.getElementById('onboarding');
 const nav = document.getElementById('nav');
 const sidebar = document.getElementById('sidebar');
 const backdrop = document.getElementById('backdrop');
 const menuBtn = document.getElementById('menu-btn');
 
 const routes = new Map(tools.map((tool) => [tool.path, tool]));
+
+// The tool the "Try a sample" button opens: one with a Scale control, so
+// the sample also shows a second step. Falls back to the first tool.
+const SAMPLE_TOOL = tools.find((tool) => tool.id === 'upscale') || tools[0];
 
 // The sidebar is generated from the registry: a new tool in tools.js shows
 // up here automatically.
@@ -41,11 +48,17 @@ function setActive(path) {
 }
 
 function renderHome() {
-  view.append(
-    el('section', 'flex flex-col gap-2', [
-      el('h1', 'text-title', 'Welcome to PIXORA'),
-      el('p', 'text-body text-muted', 'An AI toolkit for microstock creators. Pick a tool to get started.'),
-    ]),
+  // The first-run guide carries its own heading, so the welcome block is
+  // only for a visit where the guide is hidden (a returning visitor).
+  if (guide.hidden) {
+    route.append(
+      el('section', 'flex flex-col gap-2', [
+        el('h1', 'text-title', 'Welcome to PIXORA'),
+        el('p', 'text-body text-muted', 'An AI toolkit for microstock creators. Pick a tool to get started.'),
+      ]),
+    );
+  }
+  route.append(
     el('section', 'mt-8 flex flex-col gap-3', [
       el('h2', 'section-label', 'Tools'),
       el('div', 'grid gap-4 sm:grid-cols-3', tools.map((tool) =>
@@ -62,14 +75,23 @@ function renderHome() {
 function render() {
   const tool = routes.get(location.pathname);
   setActive(tool ? tool.path : '/');
-  view.replaceChildren();
+  // The guide is the home empty state: it shows on the home route only, and
+  // only when the flag says so (or the "?" button reopened it).
+  guide.hidden = !shouldShowGuide(!tool);
+  route.replaceChildren();
   if (tool) {
     document.title = tool.name + ' · PIXORA';
-    tool.render(view);
+    tool.render(route);
   } else {
     document.title = 'PIXORA';
     renderHome();
   }
+}
+
+function navigate(path) {
+  history.pushState({}, '', path);
+  closeMenu();
+  render();
 }
 
 // Mobile sidebar: the menu button toggles it over a backdrop; any
@@ -94,9 +116,24 @@ document.addEventListener('click', (event) => {
   const link = event.target.closest('a[data-nav]');
   if (!link) return;
   event.preventDefault();
-  history.pushState({}, '', link.getAttribute('href'));
-  closeMenu();
-  render();
+  navigate(link.getAttribute('href'));
 });
 window.addEventListener('popstate', render);
+
+// The first-run guide: the buttons in public/index.html, and the tools in
+// public/js/tools/ which collect a sample through takePendingFile().
+initOnboarding({
+  root: guide,
+  openTool: () => navigate(SAMPLE_TOOL.path),
+});
+
+// "?" reopens the guide: it navigates home when a tool is open, and the
+// session-only override makes the guide show regardless of the stored flag.
+for (const btn of document.querySelectorAll('[data-guide-open]')) {
+  btn.addEventListener('click', () => reopenGuide(() => {
+    if (location.pathname === '/') render();
+    else navigate('/');
+  }));
+}
+
 render();

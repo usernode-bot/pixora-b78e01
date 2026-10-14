@@ -1,5 +1,6 @@
 // Creative: prompt input, Generate button, results area. Mock processing.
 import { el, icon, pageHeader, workspace, mockDelay } from '../ui.js';
+import { conversionDone } from '../onboarding.js';
 
 export default {
   id: 'creative',
@@ -71,6 +72,7 @@ export default {
         ])));
       show('done');
       generateBtn.disabled = false;
+      conversionDone();
     }
     generateBtn.addEventListener('click', generate);
 
