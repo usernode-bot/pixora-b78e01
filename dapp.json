@@ -27,7 +27,7 @@
       "name": "Creative header shows the toolbar beside Generate",
       "path": "/creative",
       "expectSelector": "#creative-toolbar",
-      "expectText": "Generate",
+      "expectText": "Export",
       "visual": true,
       "impact": ["public/js/tools/creative.js", "public/js/ui.js", "styles/tailwind-input.css", "tailwind.config.js"]
     },

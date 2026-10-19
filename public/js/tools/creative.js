@@ -15,16 +15,16 @@ function downloadText(filename, type, text) {
   URL.revokeObjectURL(url);
 }
 
-// One compact icon button for the workspace header toolbar. It is icon-only,
-// so the hover tooltip shows its short name and the accessible name says
-// what the button does.
+// One item in the workspace header toolbar: the icon over its visible name,
+// evenly sized with the others. The label is the accessible name; the
+// tooltip says what the button does.
 function toolbarButton(name, label, description) {
   const button = el('button',
-    'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50');
+    'inline-flex min-h-14 w-14 flex-col items-center justify-center gap-1 rounded-md px-1 py-1 text-small font-medium text-muted hover:bg-raised hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50');
   button.type = 'button';
-  button.title = label;
-  button.setAttribute('aria-label', description || label);
-  button.append(icon(name, 'h-5 w-5'));
+  if (description) button.title = description;
+  button.append(icon(name, 'h-6 w-6'));
+  button.append(el('span', null, label));
   return button;
 }
 
@@ -44,7 +44,7 @@ export default {
     label.htmlFor = 'creative-prompt';
 
     const message = el('p', 'text-small text-danger', '');
-    const generateBtn = el('button', 'btn-primary ml-auto', 'Generate');
+    const generateBtn = el('button', 'btn-primary', 'Generate');
     generateBtn.type = 'button';
     generateBtn.id = 'creative-generate';
 
@@ -100,11 +100,14 @@ export default {
 
     // The mock AI engine is always on, so its dot is always green.
     const aiStatus = el('span',
-      'relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted');
+      'relative inline-flex min-h-14 w-14 flex-col items-center justify-center gap-1 rounded-md px-1 py-1 text-small font-medium text-muted');
     aiStatus.title = 'AI: mock mode active';
-    aiStatus.append(icon('sparkles', 'h-5 w-5'));
+    aiStatus.append(icon('sparkles', 'h-6 w-6'));
     aiStatus.append(el('span',
-      'absolute right-2 top-2 h-2 w-2 rounded-full bg-success ring-2 ring-surface'));
+      'absolute right-3 top-2 h-2 w-2 rounded-full bg-success ring-2 ring-surface'));
+    const aiLabel = el('span', null, 'AI');
+    aiLabel.setAttribute('aria-hidden', 'true');
+    aiStatus.append(aiLabel);
     aiStatus.append(el('span', 'sr-only', 'AI status: mock mode active'));
 
     const toolbar = el('div',
@@ -115,11 +118,18 @@ export default {
     toolbar.setAttribute('aria-label', 'Creative tools');
 
     // The workspace header: title on the left, the toolbar and the one
-    // primary action on the right. Stacks on phones.
+    // primary action on the right, separated by a thin rule. Stacks on
+    // phones, where the Generate pair wraps to its own right-aligned row.
     const header = el('div',
       'flex flex-col gap-4 md:flex-row md:items-start md:justify-between', [
       pageHeader('Creative', 'Describe an image and generate previews.'),
-      el('div', 'flex flex-wrap items-center gap-2 md:justify-end', [toolbar, generateBtn]),
+      el('div', 'flex flex-wrap items-center gap-2 md:justify-end', [
+        toolbar,
+        el('div', 'ml-auto flex items-center gap-2', [
+          el('span', 'h-8 w-px bg-line'),
+          generateBtn,
+        ]),
+      ]),
     ]);
 
     // Results: exactly one of empty, loading, done shows at a time.
