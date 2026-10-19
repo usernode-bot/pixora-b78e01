@@ -39,6 +39,7 @@
     --on-accent: 255 255 255; /* text on the accent */
     --danger: 185 28 28;
     --on-danger: 255 255 255;
+    --success: 21 128 61;     /* status dots (AI online) */
     --focus: 99 102 241;      /* the keyboard focus ring */
 
     /* The sidebar's own palette. Deliberately NOT overridden by .dark
@@ -62,6 +63,7 @@
     --on-accent: 30 27 75;
     --danger: 248 113 113;
     --on-danger: 69 10 10;
+    --success: 74 222 128;
     --focus: 129 140 248;
   }
   /* el.hidden = true hides an element even when a class gives it a display

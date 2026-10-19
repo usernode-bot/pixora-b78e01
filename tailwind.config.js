@@ -54,6 +54,7 @@ module.exports = {
         'on-accent': token('on-accent'), // text on the accent
         danger: token('danger'),
         'on-danger': token('on-danger'),
+        success: token('success'), // status dots
         focus: token('focus'), // the keyboard focus ring
         // The sidebar's fixed dark palette (stays dark in both looks).
         'sb-bg': token('sb-bg'),
