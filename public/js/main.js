@@ -5,6 +5,7 @@
 import { el, icon } from './ui.js';
 import { tools } from './tools.js';
 import { initOnboarding, reopenGuide, shouldShowGuide } from './onboarding.js';
+import { initAiConfig } from './ai-config.js';
 
 const view = document.getElementById('view');
 const route = document.getElementById('route');
@@ -13,6 +14,7 @@ const nav = document.getElementById('nav');
 const sidebar = document.getElementById('sidebar');
 const backdrop = document.getElementById('backdrop');
 const menuBtn = document.getElementById('menu-btn');
+const aiOpenBtn = document.getElementById('ai-open-btn');
 
 const routes = new Map(tools.map((tool) => [tool.path, tool]));
 
@@ -135,5 +137,9 @@ for (const btn of document.querySelectorAll('[data-guide-open]')) {
     else navigate('/');
   }));
 }
+
+// The AI menu in the sidebar opens the configuration dialog. `onOpen`
+// closes the off-canvas menu first, so the dialog is not opened underneath it.
+initAiConfig({ openButton: aiOpenBtn, onOpen: closeMenu });
 
 render();

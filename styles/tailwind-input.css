@@ -41,6 +41,7 @@
     --on-danger: 255 255 255;
     --success: 21 128 61;     /* status dots (AI online) */
     --focus: 99 102 241;      /* the keyboard focus ring */
+    --overlay: 0 0 0;         /* the scrim behind a modal dialog */
 
     /* The sidebar's own palette. Deliberately NOT overridden by .dark
        below: the sidebar stays dark in both looks (the app's signature). */
@@ -143,5 +144,45 @@
       rgb(var(--line)) 25%, transparent 0 50%,
       rgb(var(--line)) 0 75%, transparent 0);
     background-size: 1.5rem 1.5rem;
+  }
+
+  /* The AI configuration dialog (public/js/ai-config.js): a bottom sheet on
+     phones and a centred card from sm up. The body scrolls; the header and
+     the tabs stay put. */
+  .ai-dialog {
+    @apply m-0 w-full max-w-none rounded-t-2xl border border-line bg-surface p-0 text-fg
+      sm:m-auto sm:max-w-xl sm:rounded-2xl;
+    margin-top: auto;
+    max-height: min(88vh, 48rem);
+  }
+  .ai-dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+  .ai-dialog::backdrop {
+    background-color: rgb(var(--overlay) / 0.55);
+  }
+  .ai-dialog-scroll {
+    @apply min-h-0 flex-1 overflow-y-auto;
+  }
+
+  /* Tabs inside the dialog. */
+  .ai-tabs {
+    @apply flex shrink-0 gap-1 border-b border-line px-3;
+  }
+  .ai-tab {
+    @apply -mb-px min-h-11 border-b-2 border-transparent px-3 text-body font-medium text-muted
+      hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus;
+  }
+  .ai-tab[aria-selected="true"] {
+    @apply border-accent text-accent;
+  }
+
+  /* The daily usage meter. The fill width is set inline from the percentage. */
+  .meter {
+    @apply h-2 w-full overflow-hidden rounded-full bg-line;
+  }
+  .meter-fill {
+    @apply h-full rounded-full bg-accent motion-safe:transition-all motion-safe:duration-300;
   }
 }
