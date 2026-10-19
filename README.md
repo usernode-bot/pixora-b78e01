@@ -4,17 +4,28 @@ An AI creative toolkit for microstock contributors. Version 1 ships three
 tools, each with its own page and workspace:
 
 - **Creative** — describe an image with a text prompt and generate previews.
+  Its assistant turns a short idea into a polished image prompt and writes
+  microstock metadata (title, description, keywords) through the platform's
+  LLM proxy.
 - **Upscale Image** — upload a photo and enlarge it 2x or 4x.
 - **Remove Background** — upload a photo and strip the background.
 
-Processing is mock/placeholder for now: results are simulated client-side
-after a short delay, and no AI API is connected yet.
+Image processing is mock/placeholder: results are simulated client-side
+after a short delay, and no image generation API is connected yet. The
+Creative assistant is real AI, but only where the platform injects
+`USERNODE_LLM_PROXY_URL` and `USERNODE_LLM_PROXY_TOKEN` (production); in a
+staging preview or a standalone deploy its panel explains that it is
+unavailable.
 
 ## Architecture
 
 - `server.js` — Express server: platform auth (iframe JWT), static files,
-  the HTML catch-all that makes every tool route directly reachable, and a
-  graceful shutdown handler.
+  the HTML catch-all that makes every tool route directly reachable, the
+  Creative assistant's AI routes, and a graceful shutdown handler.
+- `lib/ai.js` — builds the assistant's Messages API requests (system
+  prompts, content rules) and parses the answers.
+- `public/js/ai.js` — the browser client for those routes, including the
+  platform's AI consent flow and usage meter.
 - `public/index.html` — the shell: dark sidebar, light main area, mobile
   header.
 - `public/js/tools.js` — the tool registry. The sidebar, the router and the
@@ -72,6 +83,8 @@ The server reads these, and every one has a safe default so a plain
 | `USERNODE_JWT_PUBLIC_KEY` | The platform's RSA public key (PEM). Unset locally, so the app simply treats every request as unauthenticated. |
 | `USERNODE_APP_ID` | This app's numeric id, which forms the expected token audience. Unset locally. |
 | `USERNODE_PLATFORM_ORIGIN` | The platform's origin, used only to proxy `/usernode-bridge/`, `/usernode-native/` and `/usernode-tailwind/` when nothing else serves them. Unset locally, so those three paths answer `503`. The theme script then falls back to the operating system's dark mode. |
+| `USERNODE_LLM_PROXY_URL` | The platform's LLM proxy. Injected in production; unset in a staging preview or locally, so the Creative assistant reports itself unavailable. |
+| `USERNODE_LLM_PROXY_TOKEN` | This app's credential for the proxy. Injected in production only, for the same reason. Never set it by hand or commit a value. |
 
 `DATABASE_URL` and `USERNODE_ENV` are injected by the platform and are not
 read by this app: it has no database and no environment-specific behaviour.

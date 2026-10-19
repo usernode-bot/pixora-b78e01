@@ -148,9 +148,18 @@ Re-theme by changing the token values there, keeping every text pair at
   icon, render }` and renders into the `#route` element inside `#view`.
   `#view` also holds `#onboarding`, the first-run guide, so the router clears
   `#route` rather than `#view`.
-- All tool processing is mock for now (`mockDelay` in `public/js/ui.js`).
-  When real AI lands, swap the mock call inside each tool's handler, keeping
-  the surrounding states (empty/loading/result) unchanged.
+- Image processing in every tool is mock for now (`mockDelay` in
+  `public/js/ui.js`). When real generation lands, swap the mock call inside
+  each tool's handler, keeping the surrounding states (empty/loading/result)
+  unchanged.
+- The Creative assistant is the one real AI feature. The browser talks only
+  to this app (`public/js/ai.js` → `POST /api/ai/creative`); `server.js`
+  calls the platform LLM proxy with the user's forwarded iframe token, and
+  `lib/ai.js` holds the request bodies, system prompts and response parsing.
+  It is unavailable wherever `USERNODE_LLM_PROXY_TOKEN` is absent (staging
+  previews, standalone), and the panel says so instead of failing. Never add
+  a provider key or call a provider directly, and keep the general-audience
+  decline rules in `lib/ai.js` part of every system prompt.
 - No database tables yet; the server only serves the shell and static
   assets. Uploaded images never leave the browser.
 - The `pg` dependency is declared but unused since the starter demo

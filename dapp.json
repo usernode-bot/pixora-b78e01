@@ -1,5 +1,9 @@
 {
   "description": "AI toolkit for creating and preparing commercial visual assets for stock libraries",
+  "llm": {
+    "purpose": "Turns your idea into an image prompt and microstock metadata",
+    "suggested_daily_cap_cents": 100
+  },
   "secrets": [],
   "tests": [
     {
@@ -21,6 +25,12 @@
       "name": "Creative workspace renders",
       "path": "/creative",
       "expectSelector": "#creative-generate"
+    },
+    {
+      "name": "Creative AI assistant button renders",
+      "path": "/creative",
+      "expectSelector": "#creative-ai",
+      "expectText": "AI"
     },
     {
       "id": "creative.header-toolbar",

@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const aiCore = require('./lib/ai');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -105,6 +106,136 @@ app.use((req, res, next) => {
 app.get('/health', (_req, res) => {
   if (shuttingDown) return res.status(503).json({ status: 'draining' });
   res.json({ status: 'ok' });
+});
+
+// ── Creative assistant: the platform's LLM proxy ─────────────────────────
+// The proxy URL and this app's token are injected in production only.
+// Staging previews get neither (unreviewed PR code must not spend users'
+// budgets) and a standalone deploy has no platform, so the assistant reports
+// itself unavailable there and the panel explains instead of failing.
+const LLM_PROXY_URL = (process.env.USERNODE_LLM_PROXY_URL || '').replace(/\/+$/, '');
+const LLM_PROXY_TOKEN = process.env.USERNODE_LLM_PROXY_TOKEN || '';
+const AI_ENABLED = Boolean(LLM_PROXY_URL && LLM_PROXY_TOKEN);
+
+app.get('/api/ai/status', (_req, res) => {
+  res.json({ available: AI_ENABLED });
+});
+
+// One request, one task. The browser sends which capability it wants and the
+// text of the current prompt; the app's server calls the proxy, forwarding
+// the signed-in user's iframe token (the platform bills and rate-limits the
+// call against that person's own grant).
+app.post('/api/ai/creative', async (req, res) => {
+  if (!AI_ENABLED) {
+    return res.status(503).json({
+      code: 'ai_unavailable',
+      error: 'AI features are unavailable in this environment.',
+    });
+  }
+
+  const userToken = req.headers['x-usernode-token'] || req.query.token;
+  if (!userToken) {
+    return res.status(401).json({
+      code: 'not_signed_in',
+      error: 'Sign in to use the assistant.',
+    });
+  }
+
+  const task = req.body && req.body.task;
+  const text = req.body && typeof req.body.text === 'string' ? req.body.text.trim() : '';
+  if (!aiCore.TASKS[task]) {
+    return res.status(400).json({ code: 'bad_request', error: 'That assistant task is not supported.' });
+  }
+  if (!text) {
+    return res.status(400).json({ code: 'empty_text', error: 'Write an idea in the prompt box first.' });
+  }
+  if (text.length > 2000) {
+    return res.status(400).json({ code: 'too_long', error: 'Keep the idea under 2000 characters.' });
+  }
+
+  let upstream;
+  try {
+    upstream = await fetch(LLM_PROXY_URL + '/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-usernode-app-token': LLM_PROXY_TOKEN,
+        'x-usernode-user-token': userToken,
+      },
+      body: JSON.stringify(aiCore.buildRequestBody(task, text)),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (err) {
+    console.warn('[ai] proxy unreachable: ' + err.message);
+    return res.status(502).json({
+      code: 'ai_error',
+      error: 'The assistant could not reach the AI service. Try again.',
+    });
+  }
+
+  if (!upstream.ok) {
+    let data = {};
+    try {
+      data = await upstream.json();
+    } catch (err) {
+      // The proxy answered with something other than JSON; the status below
+      // is all there is to go on.
+    }
+    if (upstream.status === 403 && data.code === 'grant_required') {
+      return res.status(403).json({
+        code: 'grant_required',
+        error: 'AI access has not been granted yet.',
+      });
+    }
+    if (upstream.status === 429) {
+      const code = data.code === 'budget_exceeded' ? 'budget_exceeded' : 'app_cap_exceeded';
+      const error = code === 'budget_exceeded'
+        ? 'Your daily AI budget is used up. It resets at midnight UTC.'
+        : 'You reached the daily AI cap for this app. It resets at midnight UTC.';
+      return res.status(429).json({ code, error });
+    }
+    console.warn('[ai] proxy answered ' + upstream.status);
+    return res.status(502).json({
+      code: 'ai_error',
+      error: 'The AI service could not answer. Try again.',
+    });
+  }
+
+  let data;
+  try {
+    data = await upstream.json();
+  } catch (err) {
+    return res.status(502).json({
+      code: 'ai_error',
+      error: 'The AI service sent an unreadable answer. Try again.',
+    });
+  }
+
+  const answer = aiCore.extractText(data && data.content);
+  if ((data && data.stop_reason === 'refusal') || aiCore.isDecline(answer)) {
+    return res.json({ declined: true, message: aiCore.DECLINE });
+  }
+
+  if (task === 'prompt') {
+    const polished = aiCore.cleanPromptText(answer);
+    if (!polished) {
+      return res.status(502).json({
+        code: 'ai_bad_response',
+        error: 'The assistant did not return a prompt. Try again.',
+      });
+    }
+    return res.json({ text: polished });
+  }
+
+  const metadata = aiCore.parseMetadata(answer);
+  if (!metadata) {
+    return res.status(502).json({
+      code: 'ai_bad_response',
+      error: 'The assistant sent metadata that could not be read. Try again.',
+    });
+  }
+  return res.json({ metadata });
 });
 
 // The template ships no favicon file; index.html carries an inline SVG
