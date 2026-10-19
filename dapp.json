@@ -1,6 +1,7 @@
 {
   "description": "AI toolkit for creating and preparing commercial visual assets for stock libraries",
   "secrets": [],
+  "bootParams": ["ai"],
   "tests": [
     {
       "id": "home.default",
@@ -30,6 +31,23 @@
       "expectText": "Export",
       "visual": true,
       "impact": ["public/js/tools/creative.js", "public/js/ui.js", "styles/tailwind-input.css", "tailwind.config.js"]
+    },
+    {
+      "id": "ai-config.panel",
+      "name": "AI configuration dialog opens from the deep link",
+      "path": "/?ai=1",
+      "expectSelector": "#ai-dialog[open]",
+      "expectText": "Daily limit",
+      "visual": true,
+      "impact": [
+        "public/js/ai-config.js",
+        "public/js/main.js",
+        "public/index.html",
+        "styles/tailwind-input.css",
+        "tailwind.config.js",
+        "server.js",
+        "lib/ai-preferences.js"
+      ]
     },
     {
       "name": "Upscale workspace renders",

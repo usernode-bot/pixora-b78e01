@@ -1,6 +1,11 @@
 const express = require('express');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
+const {
+  DEFAULT_PREFERENCES,
+  normalizePreferences,
+} = require('./lib/ai-preferences');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -26,6 +31,40 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // with `app.get`/`app.post` below) if you deliberately want it public.
 // Everything else requires a valid platform-issued JWT.
 const PUBLIC_API_PATHS = new Set(['/health']);
+
+// AI access on this build runs through the platform's LLM proxy, and only
+// production containers receive its URL and token. Their absence IS the
+// "AI is not available in this environment" state (staging previews are
+// built without them), so it is detected from the capability itself rather
+// than from USERNODE_ENV: the same code path runs everywhere.
+const AI_ENABLED = !!(
+  process.env.USERNODE_LLM_PROXY_URL && process.env.USERNODE_LLM_PROXY_TOKEN
+);
+
+// Each person's AI configuration lives in this app's own database. Without a
+// DATABASE_URL (a plain local `node server.js`) the panel still renders, and
+// saving answers 503, which the UI reports instead of pretending it saved.
+const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
+  : null;
+
+// Schema is applied idempotently on every boot, as the platform requires.
+// The table is public: a row is a provider choice, a model and a spending
+// limit, which is nothing another person could not see on this screen.
+async function initDb() {
+  if (!pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ai_preferences (
+      user_id TEXT PRIMARY KEY,
+      username TEXT,
+      provider TEXT NOT NULL,
+      tool_type TEXT NOT NULL,
+      model TEXT NOT NULL,
+      daily_limit_cents INTEGER NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
 
 app.use(express.json());
 
@@ -107,6 +146,92 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Who is signed in, for the AI panel's Account tab. At the app's own address
+// there is no `?token=` in the page URL, so the browser cannot read the
+// identity itself; the middleware above already resolved it from the header.
+app.get('/api/me', (req, res) => {
+  res.json({
+    id: req.user.id,
+    username: req.user.username || null,
+  });
+});
+
+// Whether this build can use AI at all. The frontend uses this to show the
+// "not available here" state instead of offering a permission it cannot check.
+app.get('/api/ai/status', (_req, res) => {
+  res.json({ enabled: AI_ENABLED });
+});
+
+app.get('/api/ai/preferences', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'storage_unavailable' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT provider, tool_type, model, daily_limit_cents, updated_at
+         FROM ai_preferences WHERE user_id = $1`,
+      [String(req.user.id)]
+    );
+    if (!rows.length) {
+      return res.json({ ...DEFAULT_PREFERENCES, saved: false, updatedAt: null });
+    }
+    const row = rows[0];
+    return res.json({
+      provider: row.provider,
+      type: row.tool_type,
+      model: row.model,
+      dailyLimitCents: row.daily_limit_cents,
+      saved: true,
+      updatedAt: row.updated_at,
+    });
+  } catch (err) {
+    console.warn('ai preferences read failed: ' + err.message);
+    return res.status(500).json({ error: 'read_failed' });
+  }
+});
+
+app.put('/api/ai/preferences', async (req, res) => {
+  const result = normalizePreferences(req.body);
+  if (!result.ok) {
+    return res.status(400).json({ error: 'invalid_preferences', field: result.field });
+  }
+  if (!pool) return res.status(503).json({ error: 'storage_unavailable' });
+  const value = result.value;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO ai_preferences
+         (user_id, username, provider, tool_type, model, daily_limit_cents)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id) DO UPDATE SET
+         username = EXCLUDED.username,
+         provider = EXCLUDED.provider,
+         tool_type = EXCLUDED.tool_type,
+         model = EXCLUDED.model,
+         daily_limit_cents = EXCLUDED.daily_limit_cents,
+         updated_at = NOW()
+       RETURNING provider, tool_type, model, daily_limit_cents, updated_at`,
+      [
+        String(req.user.id),
+        req.user.username || null,
+        value.provider,
+        value.type,
+        value.model,
+        value.dailyLimitCents,
+      ]
+    );
+    const row = rows[0];
+    return res.json({
+      provider: row.provider,
+      type: row.tool_type,
+      model: row.model,
+      dailyLimitCents: row.daily_limit_cents,
+      saved: true,
+      updatedAt: row.updated_at,
+    });
+  } catch (err) {
+    console.warn('ai preferences write failed: ' + err.message);
+    return res.status(500).json({ error: 'write_failed' });
+  }
+});
+
 // The template ships no favicon file; index.html carries an inline SVG
 // icon instead. Answer 204 here so anything that still probes
 // /favicon.ico (older browsers, direct visits) doesn't fall through to
@@ -160,16 +285,29 @@ async function shutdown(signal) {
   if (shuttingDown) return; // idempotent: a repeat signal must be a no-op
   shuttingDown = true;
   console.log(`[shutdown] ${signal} received, draining`);
-  server.close(() => {});
-  server.closeIdleConnections?.();
-  const t = setTimeout(() => server.closeAllConnections?.(), DRAIN_MS);
+  server?.close(() => {});
+  server?.closeIdleConnections?.();
+  const t = setTimeout(() => server?.closeAllConnections?.(), DRAIN_MS);
   t.unref?.();
+  try {
+    await pool?.end(); // finish/close DB work cleanly
+  } catch (err) {
+    console.error('[shutdown] pool.end failed: ' + err.message);
+  }
   process.exit(0);
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-const server = app.listen(port, () => console.log(`Listening on :${port}`));
-// Let Envoy retire idle upstream connections at 60s, with a 15s margin.
-server.keepAliveTimeout = 75_000;
+// Apply the schema before taking traffic. A database that is unreachable
+// must not keep the app from starting (the shell and tools never needed it);
+// the AI panel reports the storage failure itself.
+let server;
+initDb()
+  .catch((err) => console.error('database init failed: ' + err.message))
+  .finally(() => {
+    server = app.listen(port, () => console.log(`Listening on :${port}`));
+    // Let Envoy retire idle upstream connections at 60s, with a 15s margin.
+    server.keepAliveTimeout = 75_000;
+  });

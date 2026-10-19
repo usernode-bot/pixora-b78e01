@@ -151,10 +151,18 @@ Re-theme by changing the token values there, keeping every text pair at
 - All tool processing is mock for now (`mockDelay` in `public/js/ui.js`).
   When real AI lands, swap the mock call inside each tool's handler, keeping
   the surrounding states (empty/loading/result) unchanged.
-- No database tables yet; the server only serves the shell and static
-  assets. Uploaded images never leave the browser.
-- The `pg` dependency is declared but unused since the starter demo
-  endpoints were removed; drop it whenever dependencies are next touched.
+- No image processing happens on the server; the shell and tools are
+  static files and uploaded images never leave the browser. The one server
+  feature is the AI configuration panel: `ai_preferences` (in `server.js`,
+  created idempotently on boot) stores each person's provider/type/model
+  choice and daily limit. `/api/ai/*` is gated like every other API route.
+- AI access, its daily allowance and its usage meter belong to Homeroom:
+  the panel asks the bridge (`requestLlmAccess`, `getLlmUsage`) and never
+  stores or asks for a provider API key. `AI_ENABLED` on the server is the
+  presence of `USERNODE_LLM_PROXY_URL` + `USERNODE_LLM_PROXY_TOKEN`, so a
+  staging preview shows the "not available in this environment" state.
+  `?ai=1` on any route opens the dialog (a real deep link, used by the
+  `dapp.json` check).
 - The first-run guide lives in `public/index.html` (`#onboarding`) and
   `public/js/onboarding.js`. It shows on the home route until the
   `pixora:onboarded` localStorage flag is set, which happens when a
