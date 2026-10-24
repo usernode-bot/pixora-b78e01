@@ -33,6 +33,11 @@
       "expectText": "AI"
     },
     {
+      "name": "Creative manual mode renders without AI",
+      "path": "/creative",
+      "expectSelector": "#creative-prompt-build"
+    },
+    {
       "id": "creative.header-toolbar",
       "name": "Creative header shows the toolbar beside Generate",
       "path": "/creative",

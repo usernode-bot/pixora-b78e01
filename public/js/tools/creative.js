@@ -2,6 +2,7 @@
 import { el, icon, pageHeader, workspace, mockDelay } from '../ui.js';
 import { conversionDone } from '../onboarding.js';
 import { AiError, getAiStatus, getAiUsage, runAssistant } from '../ai.js';
+import { buildPrompt, draftMetadata } from '../manual.js';
 
 // Download a small text file from the browser. Results are mock captions,
 // not real images, so the toolbar's Export and CSV actions write those.
@@ -120,11 +121,11 @@ export default {
     toolbar.setAttribute('aria-label', 'Creative tools');
 
     // ── Creative assistant ──────────────────────────────────────────────
-    // Two text capabilities, both run through the platform's LLM proxy via
-    // this app's server: turn an idea into a polished prompt, and write
-    // microstock metadata for the prompt. Image generation stays mock.
-    // Where the proxy is absent (a staging preview, a standalone host) the
-    // panel opens and explains that instead of failing at the first click.
+    // Two text capabilities: turn an idea into a polished prompt, and write
+    // microstock metadata for the prompt. Both run through the platform's
+    // LLM proxy via this app's server when it can, and fall back to the
+    // manual helpers in ../manual.js wherever it cannot. Image generation
+    // stays mock.
     let aiState = 'checking'; // 'checking' | 'ready' | 'off' | 'error'
 
     const announce = el('p', 'sr-only', '');
@@ -145,12 +146,18 @@ export default {
     notice.hidden = true;
     notice.setAttribute('role', 'status');
 
-    // One capability: a heading, an explanation, its action, and exactly one
-    // of loading, error and result underneath.
-    function assistantSection(title, description, actionLabel, actionId) {
-      const action = el('button', 'btn-secondary self-start', actionLabel);
-      action.type = 'button';
-      action.id = actionId;
+    // One capability: a heading, an explanation that follows the mode, the
+    // controls for that mode, and exactly one of loading, error and result
+    // underneath. The controls themselves are rendered per mode by the
+    // functions below: the AI action, or the manual alternative that works
+    // without AI.
+    function assistantSection(title) {
+      const desc = el('p', 'text-small text-muted', '');
+      const heading = el('div', 'flex flex-col gap-1', [
+        el('h3', 'text-body font-medium', title),
+        desc,
+      ]);
+      const controls = el('div', 'flex flex-col gap-3');
       const validation = el('p', 'text-small text-danger', '');
       validation.hidden = true;
       const loading = el('div', 'flex flex-col gap-2', [
@@ -165,17 +172,14 @@ export default {
       result.hidden = true;
       result.setAttribute('aria-live', 'polite');
       const root = el('section', 'flex flex-col gap-3', [
-        el('div', 'flex flex-col gap-1', [
-          el('h3', 'text-body font-medium', title),
-          el('p', 'text-small text-muted', description),
-        ]),
-        action,
+        heading,
+        controls,
         validation,
         loading,
         error,
         result,
       ]);
-      return { root, action, validation, loading, error, result };
+      return { root, desc, controls, action: null, validation, loading, error, result };
     }
 
     // Copy on the click itself: the clipboard call needs the user gesture.
@@ -247,7 +251,10 @@ export default {
           metadataRow('Description', metadata.description),
           metadataRow('Keywords', metadata.keywords.join(', ')),
         ]),
-        el('p', 'text-small text-muted', metadata.keywords.length + ' keywords, most relevant first.'),
+        // The AI path refuses fewer than five keywords, so a short list can
+        // only come from the manual drafter; say so there.
+        el('p', 'text-small text-muted', metadata.keywords.length + ' keywords, most relevant first.' +
+          (metadata.keywords.length < 5 ? ' Drafted without AI, so the list may be short.' : '')),
       ];
     }
 
@@ -259,11 +266,20 @@ export default {
       const retryBtn = el('button', 'btn-secondary', 'Retry');
       retryBtn.type = 'button';
       retryBtn.addEventListener('click', retry);
+      const actions = el('div', 'flex flex-wrap gap-2', [retryBtn]);
+      // A failed call is not a dead end: the section can finish its job
+      // without AI for the rest of the session.
+      if (part.mode === 'ai') {
+        const manualBtn = el('button', 'btn-secondary', 'Use the manual tool');
+        manualBtn.type = 'button';
+        manualBtn.addEventListener('click', () => setMode(part, 'manual'));
+        actions.append(manualBtn);
+      }
       part.error.replaceChildren(
         icon('sparkles', 'h-6 w-6 text-muted'),
         el('p', 'text-body font-medium', 'The assistant could not answer'),
         el('p', 'text-small text-muted', message),
-        retryBtn,
+        actions,
       );
       part.error.hidden = false;
     }
@@ -285,22 +301,15 @@ export default {
           () => runPart(part, produce));
       } finally {
         part.loading.hidden = true;
-        part.action.disabled = aiState !== 'ready';
+        syncAction(part);
         if (aiState === 'ready') refreshUsage();
       }
     }
 
-    const promptPart = assistantSection(
-      'Prompt builder',
-      'Turns the idea in the prompt box into a polished, ready-to-use image prompt.',
-      'Improve prompt',
-      'creative-ai-prompt-run');
-
-    const metaPart = assistantSection(
-      'Microstock metadata',
-      'Writes a title, a description and keywords for the text in the prompt box.',
-      'Write metadata',
-      'creative-ai-metadata-run');
+    const promptPart = assistantSection('Prompt builder');
+    const metaPart = assistantSection('Microstock metadata');
+    promptPart.mode = 'ai';
+    metaPart.mode = 'ai';
 
     function currentPrompt(part) {
       const text = prompt.value.trim();
@@ -313,27 +322,138 @@ export default {
       return text;
     }
 
-    promptPart.action.addEventListener('click', () => {
-      const text = currentPrompt(promptPart);
-      if (!text) return;
-      runPart(promptPart, async () => {
-        const data = await runAssistant('prompt', text);
-        if (data.declined) return declinedNode(data.message);
-        if (!data.text) throw new AiError('The assistant did not return a prompt. Try again.');
-        return promptResult(data.text);
-      });
-    });
+    // The six guided fields of the manual prompt builder. Their placeholders
+    // are fragments, so the assembled paragraph reads as one piece.
+    const PROMPT_FIELDS = [
+      ['subject', 'Subject', 'a hand-thrown ceramic mug'],
+      ['setting', 'Setting', 'on natural linen'],
+      ['lighting', 'Lighting', 'soft morning light'],
+      ['mood', 'Mood', 'calm and warm'],
+      ['composition', 'Composition', 'close-up, shallow depth of field'],
+      ['style', 'Style', 'minimal commercial studio photo'],
+    ];
 
-    metaPart.action.addEventListener('click', () => {
-      const text = currentPrompt(metaPart);
-      if (!text) return;
-      runPart(metaPart, async () => {
-        const data = await runAssistant('metadata', text);
-        if (data.declined) return declinedNode(data.message);
-        if (!data.metadata) throw new AiError('The assistant did not return metadata. Try again.');
-        return metadataResult(data.metadata);
-      });
-    });
+    function fieldInput(labelText, placeholder) {
+      const input = el('input', 'field');
+      input.type = 'text';
+      input.placeholder = placeholder;
+      input.setAttribute('aria-label', labelText);
+      const label = el('label', 'text-small font-medium text-muted', labelText);
+      return { wrap: el('div', 'flex flex-col gap-1', [label, input]), input };
+    }
+
+    // A section's controls follow its mode: the AI action when the panel is
+    // ready, the manual alternative wherever AI cannot answer.
+    function renderPromptControls(part) {
+      if (part.mode === 'manual') {
+        part.desc.textContent = 'Assembles a polished prompt from the fields below. Works without AI.';
+        const grid = el('div', 'grid gap-2 sm:grid-cols-2');
+        const inputs = {};
+        for (const [key, label, placeholder] of PROMPT_FIELDS) {
+          const row = fieldInput(label, placeholder);
+          inputs[key] = row.input;
+          grid.append(row.wrap);
+        }
+        const buildBtn = el('button', 'btn-secondary self-start', 'Build prompt');
+        buildBtn.type = 'button';
+        buildBtn.id = 'creative-prompt-build';
+        part.controls.replaceChildren(grid, buildBtn);
+        part.action = buildBtn;
+        buildBtn.addEventListener('click', () => {
+          const fields = {};
+          for (const [key] of PROMPT_FIELDS) fields[key] = inputs[key].value.trim();
+          part.validation.hidden = true;
+          if (!fields.subject) {
+            part.validation.textContent = 'Name a subject first.';
+            part.validation.hidden = false;
+            inputs.subject.focus();
+            return;
+          }
+          runPart(part, async () => {
+            await mockDelay(400);
+            return promptResult(buildPrompt(fields));
+          });
+        });
+      } else {
+        part.desc.textContent = 'Turns the idea in the prompt box into a polished, ready-to-use image prompt.';
+        const aiBtn = el('button', 'btn-secondary self-start', 'Improve prompt');
+        aiBtn.type = 'button';
+        aiBtn.id = 'creative-ai-prompt-run';
+        part.controls.replaceChildren(aiBtn);
+        part.action = aiBtn;
+        aiBtn.addEventListener('click', () => {
+          const text = currentPrompt(part);
+          if (!text) return;
+          runPart(part, async () => {
+            const data = await runAssistant('prompt', text);
+            if (data.declined) return declinedNode(data.message);
+            if (!data.text) throw new AiError('The assistant did not return a prompt. Try again.');
+            return promptResult(data.text);
+          });
+        });
+      }
+      syncAction(part);
+    }
+
+    function renderMetaControls(part) {
+      if (part.mode === 'manual') {
+        part.desc.textContent = 'Drafts a title, a description and keywords from the text in the prompt box. Works without AI.';
+        const draftBtn = el('button', 'btn-secondary self-start', 'Draft metadata');
+        draftBtn.type = 'button';
+        draftBtn.id = 'creative-metadata-draft';
+        part.controls.replaceChildren(draftBtn);
+        part.action = draftBtn;
+        draftBtn.addEventListener('click', () => {
+          const text = currentPrompt(part);
+          if (!text) return;
+          runPart(part, async () => {
+            await mockDelay(400);
+            return metadataResult(draftMetadata(text));
+          });
+        });
+      } else {
+        part.desc.textContent = 'Writes a title, a description and keywords for the text in the prompt box.';
+        const aiBtn = el('button', 'btn-secondary self-start', 'Write metadata');
+        aiBtn.type = 'button';
+        aiBtn.id = 'creative-ai-metadata-run';
+        part.controls.replaceChildren(aiBtn);
+        part.action = aiBtn;
+        aiBtn.addEventListener('click', () => {
+          const text = currentPrompt(part);
+          if (!text) return;
+          runPart(part, async () => {
+            const data = await runAssistant('metadata', text);
+            if (data.declined) return declinedNode(data.message);
+            if (!data.metadata) throw new AiError('The assistant did not return metadata. Try again.');
+            return metadataResult(data.metadata);
+          });
+        });
+      }
+      syncAction(part);
+    }
+
+    // Switch a section's mode and re-render its controls. Session state
+    // only: a fresh page load re-derives everything from /api/ai/status.
+    function setMode(part, next) {
+      if (part.mode === next) {
+        syncAction(part);
+        return;
+      }
+      part.mode = next;
+      part.validation.hidden = true;
+      part.error.hidden = true;
+      part.result.hidden = true;
+      if (part === promptPart) renderPromptControls(part);
+      else renderMetaControls(part);
+    }
+
+    // AI actions wait for a ready panel; manual ones always work.
+    function syncAction(part) {
+      if (part.action) part.action.disabled = part.mode === 'ai' && aiState !== 'ready';
+    }
+
+    renderPromptControls(promptPart);
+    renderMetaControls(metaPart);
 
     function dollars(cents) {
       const value = Number(cents);
@@ -355,10 +475,9 @@ export default {
     }
 
     function setAiState(next) {
+      const prev = aiState;
       aiState = next;
       const ready = next === 'ready';
-      promptPart.action.disabled = !ready;
-      metaPart.action.disabled = !ready;
       aiDot.classList.toggle('bg-success', ready);
       aiDot.classList.toggle('bg-line', !ready);
       notice.hidden = next === 'ready' || next === 'checking';
@@ -366,14 +485,32 @@ export default {
         usage.textContent = 'Checking AI availability';
       } else if (next === 'off') {
         noticeTitle.textContent = 'AI is not available in this environment';
-        noticeBody.textContent = 'Staging previews do not include AI access, so the assistant cannot run here. It works in the live app.';
+        noticeBody.textContent = 'Homeroom AI is not connected here. The manual prompt builder and the metadata drafter below work without it.';
         noticeAction.hidden = true;
         usage.textContent = '';
       } else if (next === 'error') {
         noticeTitle.textContent = 'AI could not be reached';
-        noticeBody.textContent = 'The app could not ask the platform about AI. Open PIXORA inside Homeroom and try again.';
+        noticeBody.textContent = 'The app could not ask the platform about AI. Open PIXORA inside Homeroom and try again. The manual tools below still work.';
         noticeAction.hidden = false;
         usage.textContent = '';
+      }
+      // The sections follow the state: the manual tools wherever AI cannot
+      // answer, the AI actions once a fresh check says it can.
+      if (next === 'off' || next === 'error') {
+        setMode(promptPart, 'manual');
+        setMode(metaPart, 'manual');
+      } else if (next === 'ready') {
+        if (prev !== 'ready') {
+          setMode(promptPart, 'ai');
+          setMode(metaPart, 'ai');
+        } else {
+          syncAction(promptPart);
+          syncAction(metaPart);
+        }
+        refreshUsage();
+      } else {
+        syncAction(promptPart);
+        syncAction(metaPart);
       }
     }
 
@@ -385,14 +522,14 @@ export default {
       } catch (err) {
         setAiState('error');
       }
-      if (aiState === 'ready') refreshUsage();
+      // setAiState('ready') already starts the usage refresh.
     }
     noticeAction.addEventListener('click', loadAiStatus);
 
     const assistantTitle = el('h2', 'text-heading', 'Creative assistant');
     assistantTitle.id = 'creative-assistant-title';
     const assistantSummary = el('p', 'text-small text-muted',
-      'Turns your idea into an image prompt and stock metadata. Uses Homeroom AI and your daily AI budget.');
+      'Turns your idea into an image prompt and stock metadata. Uses Homeroom AI when it is available, with manual tools when it is not.');
     assistantSummary.id = 'creative-assistant-summary';
 
     const closeAiBtn = el('button', 'btn-secondary px-3', 'Close');
@@ -413,7 +550,7 @@ export default {
       notice,
       el('div', 'grid gap-6 lg:grid-cols-2', [promptPart.root, metaPart.root]),
       el('div', 'flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between', [
-        el('p', 'text-small text-muted', 'Image generation is still mock. The assistant writes the prompt and the metadata only.'),
+        el('p', 'text-small text-muted', 'Image generation is still mock. With AI the assistant polishes the prompt and writes the metadata; without it, the manual tools above do.'),
         usage,
       ]),
       announce,

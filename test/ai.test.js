@@ -87,6 +87,7 @@ test('the server calls the platform proxy, never a provider directly', () => {
 test('the page asks for AI access, shows usage and explains an unavailable env', () => {
   const client = read('public/js/ai.js');
   const creative = read('public/js/tools/creative.js');
+  const manual = read('public/js/manual.js');
   assert.match(client, /requestLlmAccess/);
   assert.match(client, /getLlmUsage/);
   assert.match(creative, /getAiUsage/);
@@ -95,4 +96,19 @@ test('the page asks for AI access, shows usage and explains an unavailable env',
   assert.match(creative, /navigator\.clipboard\.writeText/);
   assert.match(creative, /AI is not available in this environment/);
   assert.match(creative, /id = 'creative-ai'/);
+});
+
+test('without AI the assistant switches to the manual helpers, not a dead end', () => {
+  const creative = read('public/js/tools/creative.js');
+  const manual = read('public/js/manual.js');
+  assert.match(creative, /from '\.\.\/manual\.js'/);
+  assert.match(creative, /Build prompt/);
+  assert.match(creative, /Draft metadata/);
+  assert.match(creative, /Use the manual tool/);
+  assert.match(creative, /Homeroom AI is not connected here/);
+  assert.match(creative, /Drafted without AI, so the list may be short\./);
+  assert.match(creative, /buildPrompt\(/);
+  assert.match(creative, /draftMetadata\(/);
+  assert.match(manual, /export function buildPrompt/);
+  assert.match(manual, /export function draftMetadata/);
 });
